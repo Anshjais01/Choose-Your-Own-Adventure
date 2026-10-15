@@ -1,0 +1,6 @@
+tree 71d4fcc8b533ce7627bf983961ce279524ea7235
+parent f2c18c2cf7b53b5eb3d8d062065ef0b2769c8ba4
+author Ansh Jaiswal <anshgamerx9@gmail.com> 1792056863 +0530
+committer Ansh Jaiswal <anshgamerx9@gmail.com> 1792056863 +0530
+
+chore: untrack database and pycache, update .gitignore for security
