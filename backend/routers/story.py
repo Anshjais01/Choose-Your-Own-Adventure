@@ -44,6 +44,7 @@ def create_story(
     )
     db.add(job)
     db.commit()
+    db.refresh(job)
 
     background_tasks.add_task(
         generate_story_task,
