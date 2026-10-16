@@ -7,6 +7,7 @@ from core.prompts import STORY_PROMPT
 from core.config import settings
 from models.story import Story, StoryNode
 from core.models import StoryLLMResponse, StoryNodeLLM, StoryOptionLLM
+from core.procedural_generator import ProceduralStoryEngine
 from dotenv import load_dotenv
 import os
 import logging
@@ -32,15 +33,17 @@ class StoryGenerator:
         serviceurl = os.getenv("CHOREO_OPENAI_CONNECTION_SERVICEURL")
 
         if api_key and serviceurl:
-            return ChatOpenAI(model="gpt-4o-mini", api_key=api_key, base_url=serviceurl)
+            return ChatOpenAI(model="gpt-4o-mini", api_key=api_key, base_url=serviceurl, temperature=0.8)
         elif api_key:
-            return ChatOpenAI(model="gpt-4o-mini", api_key=api_key)
+            return ChatOpenAI(model="gpt-4o-mini", api_key=api_key, temperature=0.8)
 
         return None
 
+    _llm_quota_exhausted = False
+
     @classmethod
     def generate_story(cls, db: Session, session_id: str, theme: str = "fantasy") -> Story:
-        llm = cls._get_llm()
+        llm = cls._get_llm() if not cls._llm_quota_exhausted else None
         story_structure = None
 
         if llm:
@@ -49,7 +52,7 @@ class StoryGenerator:
 
                 prompt = ChatPromptTemplate.from_messages([
                     ("system", STORY_PROMPT),
-                    ("human", f"Create the story with this theme: {theme}")
+                    ("human", f"Create a unique, immersive choose-your-own-adventure story with this exact theme: {theme}")
                 ]).partial(format_instructions=story_parser.get_format_instructions())
 
                 raw_response = llm.invoke(prompt.invoke({}))
@@ -60,11 +63,14 @@ class StoryGenerator:
 
                 story_structure = story_parser.parse(response_text)
             except Exception as e:
-                logger.warning(f"LLM generation failed, using procedural fallback: {e}")
+                err_str = str(e)
+                if "insufficient_quota" in err_str or "credit_balance_exhausted" in err_str:
+                    cls._llm_quota_exhausted = True
+                logger.warning(f"LLM generation failed ({e}), using dynamic procedural engine for theme '{theme}'.")
                 story_structure = None
 
         if not story_structure:
-            story_structure = cls._generate_fallback_story(theme)
+            story_structure = ProceduralStoryEngine.generate(theme)
 
         story_db = Story(title=story_structure.title, session_id=session_id)
         db.add(story_db)
@@ -81,115 +87,17 @@ class StoryGenerator:
         return story_db
 
     @classmethod
-    def _generate_fallback_story(cls, theme: str) -> StoryLLMResponse:
-        theme_clean = theme.strip().title() or "Adventure"
-        return StoryLLMResponse(
-            title=f"The Legend of {theme_clean}",
-            rootNode=StoryNodeLLM(
-                content=f"You find yourself standing at the threshold of a mysterious realm: {theme}. The atmosphere is charged with electric silence. Ahead, two distinct paths present themselves.",
-                isEnding=False,
-                isWinningEnding=False,
-                options=[
-                    StoryOptionLLM(
-                        text="Investigate the strange glowing artifact in the center chamber",
-                        nextNode={
-                            "content": "The artifact hums with ancient power as you approach. Intricate runes swirl across its surface, and a concealed stone pedestal rises from the floor.",
-                            "isEnding": False,
-                            "isWinningEnding": False,
-                            "options": [
-                                {
-                                    "text": "Carefully align the ancient glyphs on the pedestal",
-                                    "nextNode": {
-                                        "content": "A brilliant wave of golden light washes over the chamber! The artifact opens to reveal the ancient wisdom and treasures of the realm. You have successfully conquered the quest!",
-                                        "isEnding": True,
-                                        "isWinningEnding": True,
-                                        "options": []
-                                    }
-                                },
-                                {
-                                    "text": "Grab the glowing artifact and pull it from its mount",
-                                    "nextNode": {
-                                        "content": "A sudden tremor shakes the ground as security mechanisms activate! Stone walls slam shut, sealing you in eternal darkness. Your journey ends here.",
-                                        "isEnding": True,
-                                        "isWinningEnding": False,
-                                        "options": []
-                                    }
-                                }
-                            ]
-                        }
-                    ),
-                    StoryOptionLLM(
-                        text="Follow the narrow shadowed passage leading deeper into the unknown",
-                        nextNode={
-                            "content": "You creep down the narrow corridor. A shadowy guardian steps forward, its eyes burning like blue embers. It demands to know your purpose.",
-                            "isEnding": False,
-                            "isWinningEnding": False,
-                            "options": [
-                                {
-                                    "text": "Bow with respect and state your quest truthfully",
-                                    "nextNode": {
-                                        "content": "The guardian nods with deep reverence. It steps aside and presents you with the enchanted talisman of champions. You walk forth victorious and revered!",
-                                        "isEnding": True,
-                                        "isWinningEnding": True,
-                                        "options": []
-                                    }
-                                },
-                                {
-                                    "text": "Draw your weapon and attempt to charge through",
-                                    "nextNode": {
-                                        "content": "The guardian raises its staff, casting an illusionary maze that traps your senses forever. You are lost in the shadows. Game over.",
-                                        "isEnding": True,
-                                        "isWinningEnding": False,
-                                        "options": []
-                                    }
-                                }
-                            ]
-                        }
-                    )
-                ]
-            )
-        )
-
-    @classmethod
-    def _ensure_minimum_depth(cls, node_data, depth: int = 1, minimum_depth: int = 4) -> StoryNodeLLM:
+    def _ensure_minimum_depth(cls, node_data, depth: int = 1, minimum_depth: int = 3) -> StoryNodeLLM:
         node = node_data if isinstance(node_data, StoryNodeLLM) else StoryNodeLLM.model_validate(node_data)
 
         if node.isEnding:
-            padded_node = node
-            for _ in range(max(0, minimum_depth - depth)):
-                padded_node = StoryNodeLLM(
-                    content="The path forward reveals one final challenge before the journey is decided.",
-                    isEnding=False,
-                    isWinningEnding=False,
-                    options=[StoryOptionLLM(
-                        text="Face the final challenge",
-                        nextNode=padded_node.model_dump()
-                    )]
-                )
-            return padded_node
+            return node
 
         if not node.options:
-            next_node = StoryNodeLLM(
-                content="The consequences of your choice finally become clear.",
-                isEnding=True,
-                isWinningEnding=False,
-                options=[]
-            )
-            for _ in range(max(0, minimum_depth - depth - 1)):
-                next_node = StoryNodeLLM(
-                    content="A final obstacle stands between you and the outcome of your quest.",
-                    isEnding=False,
-                    isWinningEnding=False,
-                    options=[StoryOptionLLM(
-                        text="Continue toward the outcome",
-                        nextNode=next_node.model_dump()
-                    )]
-                )
             return node.model_copy(update={
-                "options": [StoryOptionLLM(
-                    text="Continue the adventure",
-                    nextNode=next_node.model_dump()
-                )]
+                "isEnding": True,
+                "isWinningEnding": False,
+                "options": []
             })
 
         padded_options = [

@@ -1,49 +1,19 @@
 STORY_PROMPT = """
-                You are a creative story writer that creates engaging choose-your-own-adventure stories.
-                Generate a complete branching story with multiple paths and endings in the JSON format I'll specify.
+You are an expert interactive fiction writer and choose-your-own-adventure game designer.
+Your task is to generate an original, highly immersive branching adventure based strictly on the user's provided theme.
 
-                The story should have:
-                1. A compelling title
-                2. A starting situation (root node) with 2-3 options
-                3. Each option should lead to another node with its own options
-                4. Some paths should lead to endings (both winning and losing)
-                5. At least one path should lead to a winning ending
+Key Requirements:
+1. ORIGINALITY: Invent a unique, evocative title and narrative premise specifically designed around the given theme. Do not use generic tropes or repetitive formulas.
+2. BRANCHING STRUCTURE:
+   - Root node: 2 or 3 distinct, meaningful choices.
+   - Every non-ending node: 2 or 3 distinct choices with real consequences.
+   - Every ending node: empty options array [].
+   - Provide at least 2 distinct winning endings (isEnding=true, isWinningEnding=true) and at least 2 distinct losing endings (isEnding=true, isWinningEnding=false).
+   - Ensure the story branches deeply with 3 to 4 levels of depth.
+3. CONCISE & MINIMALISTIC: Keep descriptions punchy, vivid, and engaging without unnecessary filler.
+4. JSON FORMAT:
+   Return valid JSON strictly adhering to the schema below.
+   Do not wrap with markdown code fences. Do not output explanatory text.
 
-                Story structure requirements:
-                - Each node should have 2-3 options except for ending nodes
-                - The story must be at least 4 levels deep (including the root node)
-                - Do not end any path before the fourth level
-                - Add variety in the path lengths (some end earlier, some later)
-                - Make sure there's at least one winning path
-
-                Output your story in this exact JSON structure:
-                {format_instructions}
-
-                Don't simplify or omit any part of the story structure. 
-                Don't add any text outside of the JSON structure.
-                """
-
-json_structure = """
-        {
-            "title": "Story Title",
-            "rootNode": {
-                "content": "The starting situation of the story",
-                "isEnding": false,
-                "isWinningEnding": false,
-                "options": [
-                    {
-                        "text": "Option 1 text",
-                        "nextNode": {
-                            "content": "What happens for option 1",
-                            "isEnding": false,
-                            "isWinningEnding": false,
-                            "options": [
-                                // More nested options
-                            ]
-                        }
-                    },
-                    // More options for root node
-                ]
-            }
-        }
-        """
+{format_instructions}
+"""
