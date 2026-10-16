@@ -24,6 +24,8 @@ class Settings(BaseSettings):
             db_name = os.getenv("DB_NAME")
             if db_user and db_password and db_host and db_name:
                 self.DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port or 5432}/{db_name}"
+        if self.DATABASE_URL and self.DATABASE_URL.startswith("postgres://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
     @field_validator("API_PREFIX")
     def clean_api_prefix(cls, v: str) -> str:
